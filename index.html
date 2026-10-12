@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0a0e1a" />
+<title>POCKET WORLD BUILDER</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div id="app">
+  <canvas id="webgl"></canvas>
+
+  <!-- Loading screen -->
+  <div id="loading" class="screen active">
+    <div class="loading-inner">
+      <div class="logo-mark"></div>
+      <div class="logo-title">POCKET WORLD<br><span class="logo-sub">BUILDER</span></div>
+      <div class="loading-bar"><div class="loading-fill" id="loading-fill"></div></div>
+      <div class="loading-tip" id="loading-tip">Waking the tiny world...</div>
+    </div>
+  </div>
+
+  <!-- Main menu -->
+  <div id="menu" class="screen">
+    <div class="menu-inner">
+      <div class="menu-logo">
+        <div class="logo-mark big"></div>
+        <div class="logo-title">POCKET WORLD</div>
+        <div class="logo-sub">BUILDER</div>
+      </div>
+      <div class="menu-tagline">Grow a living miniature world.</div>
+      <div class="menu-actions">
+        <button class="btn primary" id="btn-play">PLAY</button>
+        <button class="btn" id="btn-free">FREE BUILD</button>
+        <button class="btn ghost" id="btn-settings">SETTINGS</button>
+      </div>
+      <div class="menu-foot">
+        <span id="menu-progress">0 / 0 worlds grown</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chapter / level select -->
+  <div id="levels" class="screen">
+    <div class="levels-head">
+      <button class="icon-btn back" id="levels-back" aria-label="Back">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="levels-title">CHOOSE A WORLD</div>
+      <div style="width:48px"></div>
+    </div>
+    <div class="chapters" id="chapters"></div>
+  </div>
+
+  <!-- HUD (in-game) -->
+  <div id="hud" class="hud">
+    <div class="hud-top">
+      <button class="icon-btn" id="btn-menu" aria-label="Menu">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </button>
+      <div class="goal-card" id="goal-card">
+        <div class="goal-label" id="goal-text">Goal</div>
+        <div class="goal-progress"><div class="goal-progress-fill" id="goal-fill"></div></div>
+        <div class="goal-counts" id="goal-counts"></div>
+      </div>
+      <button class="icon-btn" id="btn-daynight" aria-label="Day/Night">
+        <svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" fill="currentColor"/></svg>
+      </button>
+    </div>
+
+    <div class="hud-hint" id="hud-hint"></div>
+
+    <!-- Object tray -->
+    <div class="tray" id="tray"></div>
+
+    <div class="hud-bottom">
+      <button class="chip-btn" id="btn-rotate-left" aria-label="Rotate left">
+        <svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h11a6 6 0 010 12h-3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="chip-btn" id="btn-reset" aria-label="Reset level">
+        <svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a6 6 0 11-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="chip-btn" id="btn-rotate-right" aria-label="Rotate right">
+        <svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5M20 9H9a6 6 0 000 12h3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Pause / overlay -->
+  <div id="pause" class="screen overlay">
+    <div class="modal">
+      <div class="modal-title">PAUSED</div>
+      <button class="btn primary" id="btn-resume">RESUME</button>
+      <button class="btn" id="btn-restart">RESTART LEVEL</button>
+      <button class="btn ghost" id="btn-exit">EXIT TO MENU</button>
+    </div>
+  </div>
+
+  <!-- Result -->
+  <div id="result" class="screen overlay">
+    <div class="modal result-modal">
+      <div class="result-stars" id="result-stars"></div>
+      <div class="result-title" id="result-title">WORLD GROWN!</div>
+      <div class="result-sub" id="result-sub"></div>
+      <div class="reward-row" id="reward-row"></div>
+      <div class="modal-actions">
+        <button class="btn" id="btn-result-replay">REPLAY</button>
+        <button class="btn primary" id="btn-result-next">NEXT WORLD</button>
+      </div>
+      <button class="btn ghost full" id="btn-result-menu">MAIN MENU</button>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div id="settings" class="screen overlay">
+    <div class="modal">
+      <div class="modal-title">SETTINGS</div>
+      <div class="setting-row">
+        <span>Music</span>
+        <label class="switch"><input type="checkbox" id="set-music" checked><span class="slider"></span></label>
+      </div>
+      <div class="setting-row">
+        <span>Sound effects</span>
+        <label class="switch"><input type="checkbox" id="set-sfx" checked><span class="slider"></span></label>
+      </div>
+      <div class="setting-row">
+        <span>Quality</span>
+        <div class="seg" id="set-quality">
+          <button data-q="auto" class="active">AUTO</button>
+          <button data-q="high">HIGH</button>
+          <button data-q="low">LOW</button>
+        </div>
+      </div>
+      <button class="btn primary full" id="btn-settings-close">CLOSE</button>
+    </div>
+  </div>
+
+  <!-- Tutorial overlay -->
+  <div id="tutorial" class="screen overlay soft">
+    <div class="tutorial-card" id="tutorial-card">
+      <div class="tutorial-emoji" id="tut-emoji"></div>
+      <div class="tutorial-title" id="tut-title"></div>
+      <div class="tutorial-body" id="tut-body"></div>
+      <button class="btn primary" id="tut-ok">GOT IT</button>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
