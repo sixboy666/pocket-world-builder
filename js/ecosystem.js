@@ -97,6 +97,8 @@ export class Ecosystem {
 
     // water flow mesh (a network of thin ribbons) — approximated as instanced quills
     this._waterRibbons = null;
+    this._bayDisc = null;
+    this._waterDirty = true;   // rebuild ribbons only when dirty (fixes per-frame flicker)
 
     // creature counts by species for goal
     this.creatureKinds = new Set();
@@ -113,7 +115,9 @@ export class Ecosystem {
     this.creatureKinds.clear();
     this.rainPool.clear();
     this.windPool.clear();
-    if(this._waterRibbons){ this.scene.remove(this._waterRibbons); this._waterRibbons = null; }
+    if(this._waterRibbons){ this.scene.remove(this._waterRibbons); this._waterRibbons.geometry.dispose(); this._waterRibbons.material.dispose(); this._waterRibbons = null; }
+    if(this._bayDisc){ this.scene.remove(this._bayDisc); this._bayDisc.geometry.dispose(); this._bayDisc.material.dispose(); this._bayDisc = null; }
+    this._waterDirty = true;
   }
 
   register(obj, position){
@@ -122,6 +126,7 @@ export class Ecosystem {
       this.rainSpawners.push({ pos: position.clone(), obj });
     } else if(obj.kind === 'water'){
       this.waterSources.push({ pos: position.clone(), obj });
+      this._waterDirty = true;
     } else if(obj.kind === 'windmill'){
       this.windSources.push({ pos: position.clone(), obj });
     } else if(obj.kind === 'lighthouse' || obj.kind === 'house'){
@@ -324,13 +329,16 @@ export class Ecosystem {
   }
 
   // ---- water flow visualization ----
+  // Rebuilds only when _waterDirty. Meshes are created ONCE and added to the
+  // scene once; subsequent rebuilds just swap the position BufferAttribute in
+  // place and move the bay disc — no add/remove per frame, so no flicker.
   _buildWaterRibbons(){
-    if(this._waterRibbons){ this.scene.remove(this._waterRibbons); this._waterRibbons = null; }
-    if(this.waterSources.length === 0) return;
+    if(!this._waterDirty) return;
+    this._waterDirty = false;
+
+    const bay = this.world.bay;
 
     // for each water source, build a path downhill toward bay (simple gradient descent)
-    const bay = this.world.bay;
-    const mat = new THREE.LineBasicMaterial({ color: 0x5fc4ee, transparent:true, opacity:0.85, linewidth:2 });
     const positions = [];
     for(const src of this.waterSources){
       let p = src.pos.clone();
@@ -365,23 +373,42 @@ export class Ecosystem {
         if(Math.hypot(p.x,p.z) > this.world.radius) break;
       }
     }
-    if(positions.length === 0) return;
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    const line = new THREE.LineSegments(g, mat);
-    line.renderOrder = 2;
-    this.scene.add(line);
-    this._waterRibbons = line;
 
-    // small bay water disc
-    const bayDisc = new THREE.Mesh(
-      new THREE.CircleGeometry(0.6, 16),
-      new THREE.MeshStandardMaterial({ color: 0x5fc4ee, transparent:true, opacity:0.7, roughness:0.3, metalness:0 })
-    );
-    bayDisc.rotation.x = -Math.PI/2;
-    bayDisc.position.set(bay.x, bay.y + 0.02, bay.z);
-    this.scene.add(bayDisc);
-    this._bayDisc = bayDisc;
+    // no water / no path — hide persistent meshes and bail
+    if(positions.length === 0){
+      if(this._waterRibbons){ this._waterRibbons.visible = false; this._waterRibbons.geometry.setDrawRange(0, 0); }
+      if(this._bayDisc) this._bayDisc.visible = false;
+      return;
+    }
+
+    // create the line mesh exactly once; afterwards just refresh positions
+    if(!this._waterRibbons){
+      const mat = new THREE.LineBasicMaterial({ color: 0x5fc4ee, transparent:true, opacity:0.85, linewidth:2 });
+      const line = new THREE.LineSegments(new THREE.BufferGeometry(), mat);
+      line.renderOrder = 2;
+      line.visible = false;
+      this.scene.add(line);
+      this._waterRibbons = line;
+    }
+    const geo = this._waterRibbons.geometry;
+    // dispose the previous position attribute, then attach a fresh one of any size
+    if(geo.attributes.position) geo.deleteAttribute('position');
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.computeBoundingSphere();
+    this._waterRibbons.visible = true;
+
+    // bay disc — create once, then just reposition
+    if(!this._bayDisc){
+      const bayDisc = new THREE.Mesh(
+        new THREE.CircleGeometry(0.6, 16),
+        new THREE.MeshStandardMaterial({ color: 0x5fc4ee, transparent:true, opacity:0.7, roughness:0.3, metalness:0 })
+      );
+      bayDisc.rotation.x = -Math.PI/2;
+      this.scene.add(bayDisc);
+      this._bayDisc = bayDisc;
+    }
+    this._bayDisc.position.set(bay.x, bay.y + 0.02, bay.z);
+    this._bayDisc.visible = true;
   }
 
   update(dt, t, isNight){
@@ -389,7 +416,7 @@ export class Ecosystem {
     this._emitWind(dt, t);
     this.rainPool.update(dt, this.world);
     this.windPool.update(dt, this.world);
-    this._buildWaterRibbons();
+    if(this._waterDirty) this._buildWaterRibbons();
     this.maybeSpawnCreatures(dt, isNight);
     this._updateCreatures(dt, t, isNight);
 
