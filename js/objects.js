@@ -79,10 +79,10 @@ function makeTree(palette){
   root.add(trunk);
   // foliage depends on style
   const leafCol = pal(palette,'grass');
-  const leafMat = new THREE.MeshStandardMaterial({ color: leafCol, roughness:1, flatShading:true });
   let foliage;
   if(style==='nordic'){
-    // conical pine
+    // conical pine — keep flatShading for the stylized faceted look
+    const leafMat = new THREE.MeshStandardMaterial({ color: leafCol, roughness:1, flatShading:true });
     foliage = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.9, 7), leafMat);
     foliage.position.y = 0.9;
     // second cone
@@ -91,16 +91,17 @@ function makeTree(palette){
     const grp = new THREE.Group(); grp.add(foliage); grp.add(f2);
     foliage = grp;
   } else if(style==='cosmos'){
-    foliage = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4,0), new THREE.MeshStandardMaterial({ color: leafCol.clone().lerp(new THREE.Color(0x6080ff),0.4), roughness:0.4, flatShading:true, emissive:leafCol.clone().multiplyScalar(0.3) }));
+    foliage = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4,0), new THREE.MeshStandardMaterial({ color: leafCol.clone().lerp(new THREE.Color(0x6080ff),0.4), roughness:0.4, flatShading:false, emissive:leafCol.clone().multiplyScalar(0.45) }));
     foliage.position.y = 0.7;
   } else if(style==='candy'){
-    foliage = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 6), new THREE.MeshStandardMaterial({ color:0xff8ab0, roughness:0.6, flatShading:true }));
+    foliage = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 6), new THREE.MeshStandardMaterial({ color:0xff8ab0, roughness:0.6, flatShading:false }));
     foliage.position.y = 0.8;
   } else {
+    const leafMat = new THREE.MeshStandardMaterial({ color: leafCol, roughness:1, flatShading:false });
     foliage = new THREE.Mesh(new THREE.IcosahedronGeometry(0.45, 0), leafMat);
     foliage.position.y = 0.78;
   }
-  foliage.castShadow = true;
+  foliage.traverse(o => { if(o.isMesh) o.castShadow = true; });
   root.add(foliage);
   root.userData.growth = 0; // 0..1 grow-in
   root.scale.setScalar(0.4);
@@ -120,7 +121,13 @@ function makeTree(palette){
 
 function makeWater(palette){
   const root = new THREE.Group();
-  const springMat = new THREE.MeshStandardMaterial({ color: pal(palette,'water'), roughness:0.3, metalness:0.0, transparent:true, opacity:0.9, flatShading:false });
+  const style = palette._style || 'nordic';
+  const waterCol = pal(palette,'water');
+  const springMat = new THREE.MeshStandardMaterial({
+    color: waterCol, roughness:0.3, metalness:0.0, transparent:true, opacity:0.92, flatShading:false,
+    emissive: (style==='cosmos'||style==='glass') ? waterCol.clone().multiplyScalar(0.25) : new THREE.Color(0x000000),
+    emissiveIntensity: (style==='cosmos'||style==='glass') ? 1 : 0
+  });
   // small mound spring
   const mound = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 8), springMat);
   mound.position.y = 0.16; mound.scale.y = 0.4;
@@ -161,11 +168,11 @@ function makeLighthouse(palette){
   // lamp
   const lampMat = new THREE.MeshStandardMaterial({ color:0xffe6a0, emissive:0xffcc40, emissiveIntensity:0.0, roughness:0.4 });
   const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), lampMat);
-  lamp.position.y = 0.7;
+  lamp.position.y = 0.7; lamp.castShadow = false;
   root.add(lamp);
-  // point light
+  // point light (shadows off — too expensive for a small lamp)
   const light = new THREE.PointLight(0xffd070, 0, 4.5, 2);
-  light.position.y = 0.8;
+  light.position.y = 0.8; light.castShadow = false;
   root.add(light);
   root.userData.lamp = lamp;
   root.userData.light = light;
@@ -198,6 +205,10 @@ function makeHouse(palette){
   const win = new THREE.Mesh(new THREE.PlaneGeometry(0.12,0.12), winMat);
   win.position.set(0,0.22,0.251);
   root.add(win);
+  // door
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.16), new THREE.MeshStandardMaterial({ color:0x5a3a20, roughness:0.9 }));
+  door.position.set(0, 0.08, 0.251);
+  root.add(door);
   root.userData.win = win; root.userData.winMat = winMat;
   return {
     root, kind:'house',
