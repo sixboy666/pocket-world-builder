@@ -2,6 +2,37 @@
 import * as THREE from 'three';
 
 const TAU = Math.PI*2;
+const TOUCH = matchMedia('(pointer: coarse)').matches;
+
+// procedural canvas textures (cached by color)
+const _texCache = {};
+function makeNoiseTexture(baseColor, variant='grass', size=128){
+  const key = baseColor + variant;
+  if(_texCache[key]) return _texCache[key];
+  const c = document.createElement('canvas'); c.width=c.height=size;
+  const x = c.getContext('2d');
+  const base = new THREE.Color(baseColor);
+  x.fillStyle = `rgb(${base.r*255|0},${base.g*255|0},${base.b*255|0})`;
+  x.fillRect(0,0,size,size);
+  for(let i=0;i<size;i++){
+    for(let j=0;j<size;j++){
+      if(Math.random()<0.35){
+        const n = (Math.random()-0.5)*0.3;
+        const r = Math.min(255,Math.max(0,(base.r+n)*255))|0;
+        const g = Math.min(255,Math.max(0,(base.g+n)*255))|0;
+        const b = Math.min(255,Math.max(0,(base.b+n)*255))|0;
+        x.fillStyle = `rgb(${r},${g},${b})`;
+        x.fillRect(i,j,1,1);
+      }
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(4,4);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _texCache[key] = tex;
+  return tex;
+}
 
 export class World {
   constructor(scene, renderer){
@@ -118,6 +149,8 @@ export class World {
     geo.computeVertexNormals();
 
     const grassMat = new THREE.MeshStandardMaterial({ color:p.grass, roughness:0.95, metalness:0.0, flatShading:true });
+    grassMat.map = makeNoiseTexture(p.grass, 'grass');
+    grassMat.needsUpdate = true;
     this._grassMat = grassMat;
     const top = new THREE.Mesh(geo, grassMat);
     top.rotation.x = -Math.PI/2;
@@ -125,23 +158,38 @@ export class World {
     top.castShadow = false;
     this.islandGroup.add(top);
 
-    // dirt skirt / underside
-    const skirt = new THREE.CylinderGeometry(R*0.86, R*0.3, 2.6, seg, 1, true);
+    // dirt skirt / underside — top ring lifted to match the grass edge so
+    // there is no gap/flicker between the grass top and the dirt skirt.
+    const skirt = new THREE.CylinderGeometry(R, R*0.3, 2.6, seg, 1, true);
     const skirtPos = skirt.attributes.position;
     for(let i=0;i<skirtPos.count;i++){
       const x = skirtPos.getX(i), y = skirtPos.getY(i), z = skirtPos.getZ(i);
-      // add noise to rim
-      const n = Math.sin(x*1.3)*0.12 + Math.cos(z*1.1)*0.12;
-      const r2 = Math.hypot(x,z);
-      if(r2>0){
-        const scale = (1 + n/Math.max(r2,0.1)*0.06);
-        skirtPos.setX(i, x*scale);
-        skirtPos.setZ(i, z*scale);
+      if(y > 1.2){
+        // top ring: snap to grass radius and match heightmap (rim slightly below grass top)
+        const r2 = Math.hypot(x, z);
+        const nx = r2 > 0.0001 ? (x / r2) * R : x;
+        const nz = r2 > 0.0001 ? (z / r2) * R : z;
+        const h = this.sampleHeight(nx, nz);
+        skirtPos.setX(i, nx);
+        skirtPos.setZ(i, nz);
+        // mesh is offset by -1.3, so local y = worldY + 1.3; rim 0.02 below grass
+        skirtPos.setY(i, h - 0.02 + 1.3);
+      } else {
+        // bottom/side verts — keep rim noise for variation
+        const n = Math.sin(x*1.3)*0.12 + Math.cos(z*1.1)*0.12;
+        const r2 = Math.hypot(x,z);
+        if(r2>0){
+          const scale = (1 + n/Math.max(r2,0.1)*0.06);
+          skirtPos.setX(i, x*scale);
+          skirtPos.setZ(i, z*scale);
+        }
       }
     }
     skirtPos.needsUpdate = true;
     skirt.computeVertexNormals();
     const dirtMat = new THREE.MeshStandardMaterial({ color:p.ground, roughness:1, flatShading:true });
+    dirtMat.map = makeNoiseTexture(p.ground, 'dirt');
+    dirtMat.needsUpdate = true;
     this._dirtMat = dirtMat;
     const side = new THREE.Mesh(skirt, dirtMat);
     side.position.y = -1.3;
@@ -149,11 +197,11 @@ export class World {
     side.receiveShadow = true;
     this.islandGroup.add(side);
 
-    // bottom cap
-    const bottom = new THREE.Mesh(
-      new THREE.ConeGeometry(R*0.32, 1.2, seg),
-      new THREE.MeshStandardMaterial({ color:p.rock, roughness:1, flatShading:true })
-    );
+    // bottom cap + scattered rocks share a textured rock material
+    this._rockMat = new THREE.MeshStandardMaterial({ color:p.rock, roughness:1, flatShading:true });
+    this._rockMat.map = makeNoiseTexture(p.rock, 'rock');
+    this._rockMat.needsUpdate = true;
+    const bottom = new THREE.Mesh(new THREE.ConeGeometry(R*0.32, 1.2, seg), this._rockMat);
     bottom.position.y = -2.7;
     bottom.rotation.y = 0.2;
     this.islandGroup.add(bottom);
@@ -168,7 +216,7 @@ export class World {
       const sz = 0.12 + Math.random()*0.22;
       const rock = new THREE.Mesh(
         new THREE.DodecahedronGeometry(sz, 0),
-        new THREE.MeshStandardMaterial({ color:p.rock, roughness:1, flatShading:true })
+        this._rockMat
       );
       rock.position.set(x, h + sz*0.4, z);
       rock.rotation.set(Math.random(),Math.random(),Math.random());
@@ -199,16 +247,30 @@ export class World {
     // sun
     this._sun = new THREE.DirectionalLight(0xffffff, 1.3);
     this._sun.castShadow = true;
-    this._sun.shadow.mapSize.set(1024, 1024);
+    const shadowRes = TOUCH ? 1024 : 2048;
+    this._sun.shadow.mapSize.set(shadowRes, shadowRes);
     this._sun.shadow.camera.left=-10; this._sun.shadow.camera.right=10;
     this._sun.shadow.camera.top=10; this._sun.shadow.camera.bottom=-10;
     this._sun.shadow.camera.near=0.5; this._sun.shadow.camera.far=40;
     this._sun.shadow.bias = -0.0005;
+    // nicer morning angle; shadows baked once per level + on place
+    this._sun.position.set(8, 12, 6);
+    this._sun.target.position.set(0, 0, 0);
     this.scene.add(this._sun);
     this.scene.add(this._sun.target);
     // fill light (warm rim)
     this._fill = new THREE.DirectionalLight(0xffd9a0, 0.25);
     this.scene.add(this._fill);
+    // bake shadows once on level load instead of recomputing every frame
+    this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.shadowMap.needsUpdate = true;
+  }
+
+  // re-bake the static shadow map (call after level load + after object placement)
+  bakeShadows(){
+    if(this.renderer.shadowMap.enabled){
+      this.renderer.shadowMap.needsUpdate = true;
+    }
   }
 
   _buildPassiveClouds(){
