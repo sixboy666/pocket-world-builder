@@ -58,11 +58,17 @@ export class Input {
   _updatePreview(show){
     if(!this.placing){ return; }
     // Preview will be created by main.js via createObject; here we just position a ghost
-    // We use a simple sphere indicator
+    // We use a simple sphere indicator + a ground ring
     if(!this.previewMesh && show){
-      const mat = new THREE.MeshBasicMaterial({ color:0x5fd0ff, transparent:true, opacity:0.4, depthWrite:false });
-      const m = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 8), mat);
+      const mat = new THREE.MeshBasicMaterial({ color:0x5fd0ff, transparent:true, opacity:0.45, depthWrite:false, depthTest:true, polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2 });
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 8), mat);
       m.visible = false;
+      // ground ring for clearer placement indicator
+      const ringMat = new THREE.MeshBasicMaterial({ color:0x5fd0ff, transparent:true, opacity:0.6, depthWrite:false, side:THREE.DoubleSide, polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2 });
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.3,0.36,24), ringMat);
+      ring.rotation.x = -Math.PI/2;
+      ring.position.y = 0.02;
+      m.add(ring);
       this.world.scene.add(m);
       this.previewMesh = m;
     }
