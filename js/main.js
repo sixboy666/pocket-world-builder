@@ -112,7 +112,9 @@ class Game {
     if(tier === 'high'){
       this.maxDPR = 2;
       this.renderer.shadowMap.enabled = true;
+      this.renderer.shadowMap.autoUpdate = false;
       this.renderer.setPixelRatio(Math.min(devicePixelRatio, this.maxDPR));
+      if(this.world) this.world.bakeShadows();
     } else {
       this.maxDPR = 1;
       this.renderer.shadowMap.enabled = false;
@@ -171,7 +173,11 @@ class Game {
     const ch = this.currentChapter;
     // load world for chapter
     this.world.loadLevel(ch, lv);
+    this.world.bakeShadows();
     this.eco.reset();
+
+    // palette with style injected for per-chapter object appearance
+    this._palette = Object.assign({}, ch.palette, { _style: ch.style });
 
     // reset camera
     this.input.resetView();
@@ -238,7 +244,7 @@ class Game {
         return false;
       }
     }
-    const obj = createObject(kind, this.currentChapter.palette);
+    const obj = createObject(kind, this._palette || this.currentChapter.palette);
     if(!obj) return false;
     obj.root.position.copy(p);
     // for cloud, hover above
@@ -255,6 +261,8 @@ class Game {
     this.ui.renderTray(this.budget, this.used, this.activeKind);
     this._updateGoalProgress();
     this._checkComplete();
+    // re-bake the static shadow map so the new object casts a shadow
+    this.world.bakeShadows();
     this.needsFrame = true;
     return true;
   }
@@ -360,7 +368,7 @@ class Game {
   _tuneResolution(now, dt){
     if(this.frameEMA > 21 && now - this.lastAdjust > 500){
       const cur = this.renderer.getPixelRatio();
-      const next = Math.max(0.5, cur - 0.12);
+      const next = Math.max(0.6, cur - 0.12);
       if(next !== cur){ this.renderer.setPixelRatio(next); this.lastAdjust = now; }
     } else if(this.frameEMA < 15.5 && now - this.lastAdjust > 800){
       const cur = this.renderer.getPixelRatio();
